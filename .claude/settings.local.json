@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/Users/Admin/AppData/Local/Python/bin/python3 --version)"
+    ]
+  }
+}

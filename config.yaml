@@ -1,0 +1,39 @@
+# DQC Tool - Default Configuration
+
+app:
+  name: "Data Quality Check Tool"
+  version: "0.1.0"
+  page_icon: "\U0001F50D"
+
+storage:
+  database_path: "data/dqc_metadata.db"
+  encryption_key_path: "data/.encryption_key"
+
+sampling:
+  default_max_rows: 100000
+  large_table_threshold: 1000000
+
+severity_thresholds:
+  null_check:
+    warning: 5.0    # % nulls triggers warning
+    critical: 20.0  # % nulls triggers critical
+  duplicate_check:
+    warning: 1.0
+    critical: 5.0
+  range_check:
+    warning: 2.0
+    critical: 10.0
+  format_check:
+    warning: 5.0
+    critical: 15.0
+
+quality_score:
+  weights:
+    critical: 10
+    warning: 3
+    info: 0.5
+  max_score: 100
+
+export:
+  csv_delimiter: ","
+  date_format: "%Y-%m-%d %H:%M:%S"
