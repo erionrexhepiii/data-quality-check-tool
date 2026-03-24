@@ -6,8 +6,8 @@ app:
   page_icon: "\U0001F50D"
 
 storage:
-  database_path: "data/dqc_metadata.db"
-  encryption_key_path: "data/.encryption_key"
+  database_path: "dqc_data/dqc.db"
+  encryption_key_path: "dqc_data/.encryption_key"
 
 sampling:
   default_max_rows: 100000

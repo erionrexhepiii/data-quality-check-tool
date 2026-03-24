@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -101,11 +102,17 @@ _MIGRATIONS: dict[int, list[str]] = {
 
 
 class Database:
-    """Manages the SQLite database lifecycle — init, migrations, connections."""
+    """Manages the SQLite database lifecycle — init, migrations, connections.
+
+    Connections are stored per-thread using threading.local() so that each
+    Streamlit page thread gets its own sqlite3.Connection.  This avoids the
+    ``sqlite3.ProgrammingError`` that occurs when a connection created in one
+    thread is used from another (the default SQLite behaviour).
+    """
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
-        self._conn: Optional[sqlite3.Connection] = None
+        self._local = threading.local()
         self._ensure_directory()
 
     def _ensure_directory(self) -> None:
@@ -118,19 +125,29 @@ class Database:
     # ── Connection management ────────────────────────────────────────────
 
     def get_connection(self) -> sqlite3.Connection:
-        """Return a reusable connection (created on first call)."""
-        if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA foreign_keys=ON")
-        return self._conn
+        """Return a per-thread connection (created on first call per thread).
+
+        Each thread gets its own ``sqlite3.Connection`` stored in
+        ``threading.local()``.  ``check_same_thread=False`` is set as an
+        extra safety net for environments (like Streamlit Cloud) where the
+        calling thread may differ from the creating thread during cached
+        resource reuse.
+        """
+        conn: Optional[sqlite3.Connection] = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA foreign_keys=ON")
+            self._local.conn = conn
+        return conn
 
     def close(self) -> None:
-        """Close the database connection."""
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        """Close the current thread's database connection."""
+        conn: Optional[sqlite3.Connection] = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
 
     # ── Schema initialization & migration ────────────────────────────────
 
@@ -195,9 +212,31 @@ class Database:
 _db: Optional[Database] = None
 
 
-def get_database(db_path: str = "data/dqc_metadata.db") -> Database:
+def _default_db_path() -> str:
+    """Choose a writable database path.
+
+    On Streamlit Community Cloud the app directory is read-only, so we
+    fall back to /tmp which is always writable.  Locally we use a
+    relative ``dqc_data/`` directory next to the project.
+    """
+    # /tmp is guaranteed writable on Linux-based cloud hosts
+    tmp = Path("/tmp/dqc_data")
+    local = Path("dqc_data")
+
+    # Prefer local when writable (typical local dev), else /tmp
+    try:
+        local.mkdir(parents=True, exist_ok=True)
+        return str(local / "dqc.db")
+    except OSError:
+        tmp.mkdir(parents=True, exist_ok=True)
+        return str(tmp / "dqc.db")
+
+
+def get_database(db_path: Optional[str] = None) -> Database:
     """Get or create the global Database instance."""
     global _db
+    if db_path is None:
+        db_path = _default_db_path()
     if _db is None or _db.path != db_path:
         _db = Database(db_path)
         _db.initialize()

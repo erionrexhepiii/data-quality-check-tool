@@ -23,8 +23,12 @@ class ConnectionStore:
     at rest using Fernet symmetric encryption.
     """
 
-    def __init__(self, db: Database, encryption_key_path: str = "data/.encryption_key") -> None:
+    def __init__(self, db: Database, encryption_key_path: Optional[str] = None) -> None:
         self._db = db
+        if encryption_key_path is None:
+            # Store the key next to the database file
+            from pathlib import Path
+            encryption_key_path = str(Path(db.path).parent / ".encryption_key")
         self._key = get_or_create_key(encryption_key_path)
 
     # ── Create ───────────────────────────────────────────────────────────
